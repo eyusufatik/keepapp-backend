@@ -21,4 +21,4 @@ class UserModel(db.Model):
         self.password = password
 
     def __repr__(self):
-        return f"User: name = {self.username}, type = {self.user_type}"
+        return f"User: id = {self.user_id}, name = {self.username}, type = {self.user_type}"
