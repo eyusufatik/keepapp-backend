@@ -26,10 +26,12 @@ class RoomModel(db.Model):
     status = db.Column(db.Enum(RoomStatus))
     groups = db.relationship("KeeperGroupModel", secondary=group_room_pairings,
                              lazy="subquery", backref=db.backref("rooms", lazy=True))
+    template_id = db.Column(db.Integer, db.ForeignKey("templates.id"), nullable=True)
+    records = db.relationship("RecordModel", backref="room", lazy=True)
 
     def __init__(self, name):
         self.name = name
         self.status = RoomStatus.not_checked
 
     def __repr__(self):
-        return f"Name: {self.name}, status: {self.status}"
+        return f"Name: {self.name}, status: {self.status.name}"

@@ -12,6 +12,8 @@ from models.user_model import UserModel, UserType
 from models.message_model import MessageModel
 from models.keeper_group_model import KeeperGroupModel
 from models.room_model import RoomModel, RoomStatus
+from models.template_model import TemplateModel
+from models.record_model import RecordModel
 from models.shared import db
 from parsers import *
 from util_funcs import *
