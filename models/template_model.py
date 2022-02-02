@@ -1,3 +1,4 @@
+from email.policy import default
 from typing_extensions import Self
 from .shared import db
 
@@ -8,6 +9,7 @@ class TemplateModel(db.Model):
     name = db.Column(db.String(100), default="---")
     empty_template = db.Column(db.JSON, nullable=False)
     rooms_using = db.relationship("RoomModel", backref="template", lazy=True)
+    single_use = db.Column(db.Boolean, default=False)
 
     def __init__(self, name, empty_template):
         self.name = name

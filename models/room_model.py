@@ -24,7 +24,7 @@ class RoomModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, unique=True)
     status = db.Column(db.Enum(RoomStatus))
-    groups = db.relationship("KeeperGroupModel", secondary=group_room_pairings,
+    keeper_groups = db.relationship("KeeperGroupModel", secondary=group_room_pairings,
                              lazy="subquery", backref=db.backref("rooms", lazy=True))
     template_id = db.Column(db.Integer, db.ForeignKey("templates.id"), nullable=True)
     records = db.relationship("RecordModel", backref="room", lazy=True)

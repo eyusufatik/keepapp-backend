@@ -1,3 +1,5 @@
+from array import array
+from typing_extensions import Required
 from flask import request
 from flask_restful import reqparse
 
@@ -17,3 +19,10 @@ user_login_parser.add_argument(
     "username", type=str, help="Provide username", required=True)
 user_login_parser.add_argument(
     "password", type=str, help="Provide password.", required=True)
+
+create_room_parser = reqparse.RequestParser()
+create_room_parser.add_argument("name", type=str, help="Provide a name for the room", required=True)
+create_room_parser.add_argument("keeperGroupId", type=int, required=False)
+create_room_parser.add_argument("checkList", type=str, action="append", required=False)
+create_room_parser.add_argument("templateId", type=int, required=False)
+

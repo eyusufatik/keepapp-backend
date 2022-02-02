@@ -1,5 +1,8 @@
 # import from libs
 from datetime import datetime
+from hashlib import new
+from inspect import currentframe
+from tabnanny import check
 from flask import Flask, jsonify
 from flask_restful import Api, Resource
 from flask_migrate import Migrate
@@ -48,25 +51,33 @@ def user_lookup_callback(_jwt_header, jwt_data):
     identity = jwt_data["sub"]
     return UserModel.query.filter_by(id=identity).one_or_none()
 
-
-class Register(Resource):
-    def post(self):
-        args = user_registration_parser.parse_args()
-        user_type = UserType(args["userType"])
-        username = args["username"]
-        password = args["password"]
-        if len(password) < 8:
-            return success_patcher({"msg": "Password must be at least 8 characters."}, 0), 400
-
-        if UserModel.query.filter_by(username=username).count() > 0:
-            return success_patcher({"msg": "User already exists"}, 0), 409
+def only_admin(func):
+    def check_user(*argv, **kwargs):
+        if current_user.user_type == UserType.admin or current_user.user_type == UserType.super_admin:
+           returned_value = func(*argv, **kwargs)
+           return returned_value
         else:
-            hashed_pass = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-            user = UserModel(user_type,
-                             username, hashed_pass.decode())
-            db.session.add(user)
-            db.session.commit()
-            return success_patcher({}, 1), 201
+            return success_patcher({"msg": "User is not authorized to create a room"}, 0), 400
+    return check_user
+
+@app.route("/user/register", methods=["POST"])
+def register():
+    args = user_registration_parser.parse_args()
+    user_type = UserType(args["userType"])
+    username = args["username"]
+    password = args["password"]
+    if len(password) < 8:
+        return success_patcher({"msg": "Password must be at least 8 characters."}, 0), 400
+
+    if UserModel.query.filter_by(username=username).count() > 0:
+        return success_patcher({"msg": "User already exists"}, 0), 409
+    else:
+        hashed_pass = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+        user = UserModel(user_type,
+                         username, hashed_pass.decode())
+        db.session.add(user)
+        db.session.commit()
+        return success_patcher({}, 1), 201
 
 
 @app.route("/user/login", methods=["POST"])
@@ -88,21 +99,89 @@ def login():
         return jsonify(success_patcher({"msg": "Invalid username or password"}, 0)), 400
 
 
-@app.route("/user/type", methods=["POST"])
-@jwt_required(locations=["cookies"])
-def get_user_type():
-    return jsonify(type=current_user.user_type)
-
-
-@app.route("/user/logout", methods=["POST"])
+@app.route("/user/logout", methods=["GET"])
 def logout_with_cookies():
     response = jsonify({"msg": "logout successful"})
     unset_jwt_cookies(response)
     return response
 
 
-api.add_resource(Register, "/user/register")
+class UserRooms(Resource):
+    @jwt_required()
+    def get(self):
+        user_rooms = {}
+        if current_user.user_type == UserType.admin or current_user.user_type == UserType.super_admin:
+            all_rooms = RoomModel.query.all()
+            user_rooms = room_model_list_to_dict(all_rooms)
+        else:
+            room_set = set()
+            for group in current_user.keeper_groups:
+                for room in group.rooms:
+                    room_set.add(room)
+            user_rooms = room_model_list_to_dict(room_set)
+        return success_patcher(user_rooms, 1), 200
+
+
+class Room(Resource):
+    @jwt_required()
+    def get(self, id):
+        room = RoomModel.query.filter_by(id=id).scalar()
+
+        if room is None:
+            return success_patcher({"msg": "Room with given ID doesn't exist."}, 0), 400
+
+        if current_user.user_type == UserType.keeper and not check_room_access(current_user, room):
+            return success_patcher({"msg": "Keeper doesn't have access to the room, add it to a group that has access to the room"}, 0), 400
+
+        room_dict = room_model_to_dict(room)
+        return success_patcher(room_dict, 1), 200
+
+
+    @jwt_required()
+    @only_admin
+    def post(self):
+        args = create_room_parser.parse_args()
+        name = args["name"]
+        keeper_group_id = args["keeperGroupId"]
+        check_list = args["checkList"]
+        template_id = args["templateId"]
+
+        if not RoomModel.query.filter_by(name=name).scalar() is None:
+            return success_patcher({"msg": "There is already a room with this name."}, 0), 400
+
+        if check_list is None and template_id is None:
+            return success_patcher({"msg": "checkList and templateId cannot be both empty"}, 0), 400
+
+        if not check_list is None and not template_id is None:
+            return success_patcher({"msg": "Only one of checkList or templateId should be given."}, 0), 400
+
+        new_room = RoomModel(name)
+
+        if not keeper_group_id is None:
+            group = KeeperGroupModel.query.filter_by(id=keeper_group_id).scalar()
+            if group is None:
+                return success_patcher({"msg": "No such keeper group exists."}, 0), 400
+            else:
+                new_room.keeper_groups.append(group)
+
+        if not check_list is None:
+            new_template = TemplateModel(name, {"checkList":check_list})
+            new_template.single_use = True
+            new_template.rooms_using.append(new_room)
+            db.session.add(new_template)
+        elif not template_id is None:
+            template = TemplateModel.query.filter_by(id=template_id).scalar()
+            if template is None:
+                return success_patcher({"msg": "No such template exists."}, 0), 400
+            else:
+                template.rooms_using.append(new_room)
+        
+        db.session.commit()
+        return success_patcher({"id":new_room.id}, 1), 200
+
+
+api.add_resource(UserRooms, "/user/rooms")
+api.add_resource(Room, "/room", "/room/<int:id>")
 
 if __name__ == "__main__":
-
     app.run(debug=True)
