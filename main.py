@@ -51,6 +51,7 @@ def user_lookup_callback(_jwt_header, jwt_data):
     identity = jwt_data["sub"]
     return UserModel.query.filter_by(id=identity).one_or_none()
 
+
 def only_admin(func):
     def check_user(*argv, **kwargs):
         if current_user.user_type == UserType.admin or current_user.user_type == UserType.super_admin:
@@ -59,6 +60,7 @@ def only_admin(func):
         else:
             return success_patcher({"msg": "User is not authorized to create a room"}, 0), 400
     return check_user
+
 
 @app.route("/user/register", methods=["POST"])
 def register():
@@ -136,7 +138,6 @@ class Room(Resource):
         room_dict = room_model_to_dict(room)
         return success_patcher(room_dict, 1), 200
 
-
     @jwt_required()
     @only_admin
     def post(self):
@@ -158,14 +159,15 @@ class Room(Resource):
         new_room = RoomModel(name)
 
         if not keeper_group_id is None:
-            group = KeeperGroupModel.query.filter_by(id=keeper_group_id).scalar()
+            group = KeeperGroupModel.query.filter_by(
+                id=keeper_group_id).scalar()
             if group is None:
                 return success_patcher({"msg": "No such keeper group exists."}, 0), 400
             else:
                 new_room.keeper_groups.append(group)
 
         if not check_list is None:
-            new_template = TemplateModel(name, {"checkList":check_list})
+            new_template = TemplateModel(name, {"checkList": check_list})
             new_template.single_use = True
             new_template.rooms_using.append(new_room)
             db.session.add(new_template)
@@ -175,13 +177,43 @@ class Room(Resource):
                 return success_patcher({"msg": "No such template exists."}, 0), 400
             else:
                 template.rooms_using.append(new_room)
-        
+
         db.session.commit()
-        return success_patcher({"id":new_room.id}, 1), 200
+        return success_patcher({"id": new_room.id}, 1), 200
+
+
+class RoomRecord(Resource):
+    @jwt_required()
+    def get(self, id):
+        room = RoomModel.query.filter_by(id=id).scalar()
+
+        if room is None:
+            return success_patcher({"msg": "Room with given ID doesn't exist."}, 0), 400
+
+        if check_room_access(current_user, room):
+            todays_record = RecordModel.query.filter_by(room_id=id).filter(
+                RecordModel.time <= datetime.now()).filter(datetime.today().date() <= RecordModel.time).scalar()
+
+            if todays_record is None:
+                return success_patcher({"msg": "No record today for the room."}, 0), 400
+
+            return_dict = {}
+            return_dict["checkList"] = todays_record.filled_list
+            return_dict["notes"] = todays_record.notes
+            return_dict["photos"] = todays_record.photos
+            return_dict = {"record": return_dict}
+
+            return success_patcher(return_dict, 1), 200
+
+        else:
+            return success_patcher({"msg": "User doesn't have access to the room"}, 0), 400
+
+    def post(self, id):
+        pass
 
 
 api.add_resource(UserRooms, "/user/rooms")
 api.add_resource(Room, "/room", "/room/<int:id>")
-
+api.add_resource(RoomRecord, "/room/<int:id>/record")
 if __name__ == "__main__":
     app.run(debug=True)
