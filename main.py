@@ -40,7 +40,7 @@ migrate = Migrate(app, db)
 
 jwt = JWTManager(app)
 
-
+# --START-- decoratorler ayrı bir dosyada
 @jwt.user_identity_loader
 def user_identity_lookup(user):
     return user.id
@@ -58,28 +58,28 @@ def only_admin(func):
            returned_value = func(*argv, **kwargs)
            return returned_value
         else:
-            return success_patcher({"msg": "User is not authorized to create a room"}, 0), 400
+            return success_patcher({"msg": "User is not authorized to create a room"}, 0), 400 # 401 + burada daha generic bir mesaj verilmesi lazım. Onlyadmin routelarda tutması için "Not authorized." yeterli gibi.
     return check_user
-
+# --END--
 
 @app.route("/user/register", methods=["POST"])
 def register():
     args = user_registration_parser.parse_args()
-    user_type = UserType(args["userType"])
+    user_type = UserType(args["userType"]) #bu userType body ile gelmeyecek. Userlar hep keeper, sadece biz admin oluşturabiliriz.
     username = args["username"]
     password = args["password"]
     if len(password) < 8:
-        return success_patcher({"msg": "Password must be at least 8 characters."}, 0), 400
+        return success_patcher({"msg": "Password must be at least 8 characters."}, 0), 400 #422 sanki, 400 daha bozuk gelen json için falan.
 
     if UserModel.query.filter_by(username=username).count() > 0:
-        return success_patcher({"msg": "User already exists"}, 0), 409
+        return success_patcher({"msg": "User already exists"}, 0), 409 # 409 iyiymiş, 403 kullanıyordum.
     else:
         hashed_pass = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
         user = UserModel(user_type,
                          username, hashed_pass.decode())
         db.session.add(user)
         db.session.commit()
-        return success_patcher({}, 1), 201
+        return success_patcher({}, 1), 201 #msg + user_id hojdur.
 
 
 @app.route("/user/login", methods=["POST"])
@@ -96,9 +96,9 @@ def login():
             set_access_cookies(response, access_token)
             return response, 200
         else:
-            return jsonify(success_patcher({"msg": "Invalid username or password"}, 0)), 400
+            return jsonify(success_patcher({"msg": "Invalid username or password"}, 0)), 400 # 401(?).
     else:
-        return jsonify(success_patcher({"msg": "Invalid username or password"}, 0)), 400
+        return jsonify(success_patcher({"msg": "Invalid username or password"}, 0)), 400  # user does not exists, 401.
 
 
 @app.route("/user/logout", methods=["GET"])
@@ -130,14 +130,14 @@ class Room(Resource):
         room = RoomModel.query.filter_by(id=id).scalar()
 
         if room is None:
-            return success_patcher({"msg": "Room with given ID doesn't exist."}, 0), 400
+            return success_patcher({"msg": "Room with given ID doesn't exist."}, 0), 400 # 404
 
         if current_user.user_type == UserType.keeper and not check_room_access(current_user, room):
-            return success_patcher({"msg": "Keeper doesn't have access to the room, add it to a group that has access to the room"}, 0), 400
+            return success_patcher({"msg": "Keeper doesn't have access to the room, add it to a group that has access to the room"}, 0), 400 #401 Not Authorized. yeterli 
 
         room_dict = room_model_to_dict(room)
         return success_patcher(room_dict, 1), 200
-
+    # en alta detaylı not bıraktım. Buradan sonrasına bakmadım.
     @jwt_required()
     @only_admin
     def post(self):
@@ -212,8 +212,12 @@ class RoomRecord(Resource):
         pass
 
 
-api.add_resource(UserRooms, "/user/rooms")
+api.add_resource(UserRooms, "/user/rooms") #user/rooms dublicate + not rest oluyor. rooms'a get yaptığında o kontrolü içeride yapacağız. Admin değilse ona göre çekecek.
 api.add_resource(Room, "/room", "/room/<int:id>")
-api.add_resource(RoomRecord, "/room/<int:id>/record")
+api.add_resource(RoomRecord, "/room/<int:id>/record") 
+# Burada da room record diye ayrı bir route değil de
+# rooms.get -> userType+yetki alanı göre odaları görme || rooms/:id.get(date?) -> yalnız odanın kaydı. date varsa o günkü kaydı. || rooms.post(array of room_numbers, template name || checklist json) -> Oluştur, çelişen oda varsa üstüne yazabilir, bunu düşünmek lazım.
+# rooms/:id.post(data in body) -> o günkü checklist verileri.
+# tbc
 if __name__ == "__main__":
     app.run(debug=True)
