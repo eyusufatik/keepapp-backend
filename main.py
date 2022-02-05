@@ -1,16 +1,12 @@
 # import from libs
 from datetime import datetime
-from hashlib import new
-from inspect import currentframe
-from tabnanny import check
-from flask import Flask, jsonify
-from flask_restful import Api, Resource
-from flask_migrate import Migrate
-from flask_jwt_extended import create_access_token, current_user, jwt_required, JWTManager, set_access_cookies, unset_jwt_cookies
+from flask import jsonify
+from flask_restful import Resource
+from flask_jwt_extended import create_access_token, current_user, jwt_required, set_access_cookies, unset_jwt_cookies
 import bcrypt
 
 # import from own code
-import config
+from app_configs import *
 from models.user_model import UserModel, UserType
 from models.message_model import MessageModel
 from models.keeper_group_model import KeeperGroupModel
@@ -20,46 +16,7 @@ from models.record_model import RecordModel
 from models.shared import db
 from parsers import *
 from util_funcs import *
-
-app = Flask(__name__)
-api = Api(app)
-
-DB_URL = 'postgresql+psycopg2://{user}:{pw}@{url}/{db}'.format(
-    user=config.CONFIG['postgresUser'], pw=config.CONFIG['postgresPass'], url=config.CONFIG['postgresUrl'], db=config.CONFIG['postgresDb'])
-
-app.config['SQLALCHEMY_DATABASE_URI'] = DB_URL
-app.config["JWT_SECRET_KEY"] = config.CONFIG["jwt_secret"]
-app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
-# FOR PRODUCTION
-#app.config["JWT_COOKIE_SECURE"] = True
-
-db.init_app(app)
-app.app_context().push()
-migrate = Migrate(app, db)
-# db.create_all()
-
-jwt = JWTManager(app)
-
-
-@jwt.user_identity_loader
-def user_identity_lookup(user):
-    return user.id
-
-
-@jwt.user_lookup_loader
-def user_lookup_callback(_jwt_header, jwt_data):
-    identity = jwt_data["sub"]
-    return UserModel.query.filter_by(id=identity).one_or_none()
-
-
-def only_admin(func):
-    def check_user(*argv, **kwargs):
-        if current_user.user_type == UserType.admin or current_user.user_type == UserType.super_admin:
-           returned_value = func(*argv, **kwargs)
-           return returned_value
-        else:
-            return success_patcher({"msg": "User is not authorized to create a room"}, 0), 400
-    return check_user
+from decorators import *
 
 
 @app.route("/user/register", methods=["POST"])
