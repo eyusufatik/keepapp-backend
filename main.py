@@ -1,6 +1,6 @@
 # import from libs
-from datetime import datetime
-from flask import jsonify
+from datetime import datetime, timedelta
+from flask import jsonify, request
 from flask_restful import Resource
 from flask_jwt_extended import create_access_token, current_user, jwt_required, set_access_cookies, unset_jwt_cookies
 import bcrypt
@@ -65,35 +65,34 @@ def logout_with_cookies():
     return response
 
 
-class UserRooms(Resource):
+class Rooms(Resource):
     @jwt_required()
-    def get(self):
-        user_rooms = {}
-        if current_user.user_type == UserType.admin or current_user.user_type == UserType.super_admin:
-            all_rooms = RoomModel.query.all()
-            user_rooms = room_model_list_to_dict(all_rooms)
+    def get(self, id=None):
+        # /rooms
+        if id is None:
+            user_rooms = {}
+            if current_user.user_type == UserType.admin or current_user.user_type == UserType.super_admin:
+                all_rooms = RoomModel.query.all()
+                user_rooms = room_model_list_to_dict(all_rooms)
+            else:
+                room_set = set()
+                for group in current_user.keeper_groups:
+                    for room in group.rooms:
+                        room_set.add(room)
+                user_rooms = room_model_list_to_dict(room_set)
+            return success_patcher(user_rooms, 1), 200
+        # /rooms/<id>
         else:
-            room_set = set()
-            for group in current_user.keeper_groups:
-                for room in group.rooms:
-                    room_set.add(room)
-            user_rooms = room_model_list_to_dict(room_set)
-        return success_patcher(user_rooms, 1), 200
+            room = RoomModel.query.filter_by(id=id).scalar()
 
+            if room is None:
+                return success_patcher({"msg": "Room with given ID doesn't exist."}, 0), 400
 
-class Room(Resource):
-    @jwt_required()
-    def get(self, id):
-        room = RoomModel.query.filter_by(id=id).scalar()
+            if current_user.user_type == UserType.keeper and not check_room_access(current_user, room):
+                return success_patcher({"msg": "Keeper doesn't have access to the room, add it to a group that has access to the room"}, 0), 400
 
-        if room is None:
-            return success_patcher({"msg": "Room with given ID doesn't exist."}, 0), 400
-
-        if current_user.user_type == UserType.keeper and not check_room_access(current_user, room):
-            return success_patcher({"msg": "Keeper doesn't have access to the room, add it to a group that has access to the room"}, 0), 400
-
-        room_dict = room_model_to_dict(room)
-        return success_patcher(room_dict, 1), 200
+            room_dict = room_model_to_dict(room)
+            return success_patcher(room_dict, 1), 200
 
     @jwt_required()
     @only_admin
@@ -139,25 +138,33 @@ class Room(Resource):
         return success_patcher({"id": new_room.id}, 1), 200
 
 
-class RoomRecord(Resource):
+class RoomRecords(Resource):
     @jwt_required()
     def get(self, id):
+        args = date_in_query_parser.parse_args()
+        date = args["date"]
         room = RoomModel.query.filter_by(id=id).scalar()
 
         if room is None:
             return success_patcher({"msg": "Room with given ID doesn't exist."}, 0), 400
 
         if check_room_access(current_user, room):
-            todays_record = RecordModel.query.filter_by(room_id=id).filter(
-                RecordModel.time <= datetime.now()).filter(datetime.today().date() <= RecordModel.time).scalar()
+            record = None
 
-            if todays_record is None:
-                return success_patcher({"msg": "No record today for the room."}, 0), 400
+            if date is None:
+                record = RecordModel.query.filter_by(room_id=id).filter(
+                    RecordModel.time <= datetime.now()).filter(datetime.today().date() <= RecordModel.time).scalar()
+            else:
+                print(date)
+                record = RecordModel.query.filter_by(room_id=id).filter(
+                    RecordModel.time >= date).filter(RecordModel.time <= date+timedelta(days=1)).scalar()
 
+            if record is None:
+                return success_patcher({"msg": "No record for the room today/at the given date."}, 0), 400
             return_dict = {}
-            return_dict["checkList"] = todays_record.filled_list
-            return_dict["notes"] = todays_record.notes
-            return_dict["photos"] = todays_record.photos
+            return_dict["checkList"] = record.filled_list
+            return_dict["notes"] = record.notes
+            return_dict["photos"] = record.photos
             return_dict = {"record": return_dict}
 
             return success_patcher(return_dict, 1), 200
@@ -169,8 +176,8 @@ class RoomRecord(Resource):
         pass
 
 
-api.add_resource(UserRooms, "/user/rooms")
-api.add_resource(Room, "/room", "/room/<int:id>")
-api.add_resource(RoomRecord, "/room/<int:id>/record")
+api.add_resource(Rooms, "/rooms",  "/rooms/<int:id>")
+api.add_resource(RoomRecords, "/rooms/<int:id>/records")
+
 if __name__ == "__main__":
     app.run(debug=True)

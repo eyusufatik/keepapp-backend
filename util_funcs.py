@@ -13,7 +13,7 @@ def room_model_to_dict(room):
     return_dict["name"] = room.name
     return_dict["status"] = room.status.value
     return_dict["checkList"] = room.template.empty_template["checkList"]
-    return return_dict
+    return {"room":return_dict}
 
 
 def room_model_list_to_dict(rooms):
