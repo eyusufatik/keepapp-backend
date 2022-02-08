@@ -1,6 +1,6 @@
 import enum
 from .shared import db
-
+from .record_model import RecordModel
 
 class UserType(enum.IntEnum):
     super_admin = 0

@@ -1,5 +1,8 @@
 # 1 for successful, 0 for error
+from tabnanny import check
 from models.user_model import UserType
+from models.room_model import RoomModel
+from models.template_model import TemplateModel
 
 
 def success_patcher(dict, number):
@@ -13,7 +16,7 @@ def room_model_to_dict(room):
     return_dict["name"] = room.name
     return_dict["status"] = room.status.value
     return_dict["checkList"] = room.template.empty_template["checkList"]
-    return {"room":return_dict}
+    return {"room": return_dict}
 
 
 def room_model_list_to_dict(rooms):
@@ -38,3 +41,21 @@ def check_room_access(user, room):
             if user in group.keepers:
                 return True
         return False
+
+
+# Checks if the check list is made from template
+def is_check_list_for_room(room, check_list):
+    template = room.template
+
+    for item in check_list.keys():
+        if not item in template.empty_template["checkList"]:
+            return False
+    return True and len(template.empty_template["checkList"]) == len(check_list.keys())
+
+
+# Checks if the check list items in the record are assigned proper values.
+def check_item_values(check_list):
+    for value in check_list.values():
+        if value != 2 and value != 3 and value != 4:
+            return False
+    return True

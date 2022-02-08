@@ -98,13 +98,9 @@ class Rooms(Resource):
     @only_admin
     def post(self):
         args = create_room_parser.parse_args()
-        name = args["name"]
-        keeper_group_id = args["keeperGroupId"]
+        names = args["names"]
         check_list = args["checkList"]
         template_id = args["templateId"]
-
-        if not RoomModel.query.filter_by(name=name).scalar() is None:
-            return success_patcher({"msg": "There is already a room with this name."}, 0), 400
 
         if check_list is None and template_id is None:
             return success_patcher({"msg": "checkList and templateId cannot be both empty"}, 0), 400
@@ -112,30 +108,32 @@ class Rooms(Resource):
         if not check_list is None and not template_id is None:
             return success_patcher({"msg": "Only one of checkList or templateId should be given."}, 0), 400
 
-        new_room = RoomModel(name)
-
-        if not keeper_group_id is None:
-            group = KeeperGroupModel.query.filter_by(
-                id=keeper_group_id).scalar()
-            if group is None:
-                return success_patcher({"msg": "No such keeper group exists."}, 0), 400
-            else:
-                new_room.keeper_groups.append(group)
-
+        template = TemplateModel.query.filter_by(id=template_id).scalar()
         if not check_list is None:
-            new_template = TemplateModel(name, {"checkList": check_list})
+            new_template = TemplateModel(
+                "single use", {"checkList": check_list})
             new_template.single_use = True
-            new_template.rooms_using.append(new_room)
             db.session.add(new_template)
         elif not template_id is None:
-            template = TemplateModel.query.filter_by(id=template_id).scalar()
             if template is None:
                 return success_patcher({"msg": "No such template exists."}, 0), 400
-            else:
+
+        new_room_ids = {}
+
+        for name in names:
+            if not RoomModel.query.filter_by(name=name).scalar() is None:
+                return success_patcher({"msg": "There already exists a room with the name: "+name}, 0), 400
+
+            new_room = RoomModel(name)
+
+            if not check_list is None:
+                new_template.rooms_using.append(new_room)
+            elif not template_id is None:
                 template.rooms_using.append(new_room)
 
-        db.session.commit()
-        return success_patcher({"id": new_room.id}, 1), 200
+            db.session.commit()
+            new_room_ids[name] = new_room.id
+        return success_patcher({"newRooms":new_room_ids}, 1), 200
 
 
 class RoomRecords(Resource):
@@ -172,8 +170,34 @@ class RoomRecords(Resource):
         else:
             return success_patcher({"msg": "User doesn't have access to the room"}, 0), 400
 
+    @jwt_required()
+    @only_keeper
     def post(self, id):
-        pass
+        args = create_record_parser.parse_args()
+        check_list = args["checkList"]
+        note = args["notes"]
+        photos = args["photos"]
+
+        room = RoomModel.query.filter_by(id=id).scalar()
+
+        if room is None:
+            return success_patcher({"msg": "Room with given ID doesn't exist."}, 0), 400
+
+        if not check_room_access(current_user, room):
+            return success_patcher({"msg": "User doesn't have access to the room"}, 0), 400
+
+        if not check_item_values(check_list):
+            return success_patcher({"msg": "Items must only be assigned 2,3 or 4."}, 0), 400
+
+        if is_check_list_for_room(room, check_list):
+            record = RecordModel(datetime.now(), check_list, note, photos)
+            with db.session.no_autoflush:
+                current_user.records.append(record)
+                room.records.append(record)
+                db.session.commit()
+            return success_patcher({"msg": "Record created successfully."}, 1), 200
+        else:
+            return success_patcher({"msg": "Sent checkList doesn't fit the room's template."}, 0), 400
 
 
 api.add_resource(Rooms, "/rooms",  "/rooms/<int:id>")

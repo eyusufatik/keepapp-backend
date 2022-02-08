@@ -1,5 +1,6 @@
 import enum
 from .shared import db
+from .record_model import RecordModel
 
 group_room_pairings = db.Table("group_room_pairings",
                                db.Column("group_id", db.ForeignKey(
