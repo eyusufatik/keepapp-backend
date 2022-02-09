@@ -14,3 +14,6 @@ class TemplateModel(db.Model):
     def __init__(self, name, empty_template):
         self.name = name
         self.empty_template = empty_template
+
+    def __repr__(self):
+        return f"Id: {self.id}, name: {self.name}"

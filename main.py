@@ -133,7 +133,7 @@ class Rooms(Resource):
 
             db.session.commit()
             new_room_ids[name] = new_room.id
-        return success_patcher({"newRooms":new_room_ids}, 1), 200
+        return success_patcher({"newRooms": new_room_ids}, 1), 200
 
 
 class RoomRecords(Resource):
@@ -200,8 +200,88 @@ class RoomRecords(Resource):
             return success_patcher({"msg": "Sent checkList doesn't fit the room's template."}, 0), 400
 
 
+class Templates(Resource):
+    @jwt_required()
+    @only_admin
+    def get(self, id=None):
+        return_dict = {}
+        # /templates
+        if id is None:
+            all_templates = TemplateModel.query.all()
+            return_dict = template_model_list_to_dict(all_templates)
+        # /templates/{id}
+        else:
+            template = TemplateModel.query.filter_by(id=id).scalar()
+
+            if template is None:
+                return success_patcher({"msg": "No such template exists"}, 0), 400
+
+            return_dict = template_model_to_dict(template)
+
+        return success_patcher(return_dict, 1), 200
+
+    @jwt_required()
+    @only_admin
+    def post(self, id=None):
+        if not id is None:
+            return success_patcher({"msg": "No id in POST /templates."}, 0), 400
+
+        args = create_template_parser.parse_args()
+        name = args["name"]
+        check_list = args["checkList"]
+
+        template = TemplateModel(name, {"checkList": check_list})
+        db.session.add(template)
+        db.session.commit()
+
+        return success_patcher({"id": template.id}, 1), 200
+
+    @jwt_required()
+    @only_admin
+    def put(self, id=None):
+        if id is None:
+            return success_patcher({"msg": "Provide the id of the template you want to edit."}, 0), 400
+
+        args = update_template_parser.parse_args()
+        name = args["name"]
+        check_list = args["checkList"]
+
+        template = TemplateModel.query.filter_by(id=id).scalar()
+
+        if template is None:
+            return success_patcher({"msg": "No such template exists."}, 0), 400
+
+        if name is None and check_list is None:
+            return success_patcher({"msg": "Either change the name or the checkList."}, 0), 400
+
+        if not name is None:
+            template.name = name
+
+        if not check_list is None:
+            template.empty_template = {"checkList": check_list}
+
+        db.session.commit()
+
+        return success_patcher({"msg": f"Template {id} updated successfully."}, 1), 200
+
+    @jwt_required()
+    @only_admin
+    def delete(self, id=None):
+        if id is None:
+            return success_patcher({"msg": "Provide the id of the template you want to edit."}, 0), 400
+
+        template = TemplateModel.query.filter_by(id=id).scalar()
+
+        if template is None:
+            return success_patcher({"msg": "No such template exists."}, 0), 400
+
+        db.session.delete(template)
+        db.session.commit()
+
+        return success_patcher({"msg": f"Template {id} deleted successfully."}, 1), 200
+
 api.add_resource(Rooms, "/rooms",  "/rooms/<int:id>")
 api.add_resource(RoomRecords, "/rooms/<int:id>/records")
-
+api.add_resource(Templates, "/templates", "/templates/<int:id>")
 if __name__ == "__main__":
     app.run(debug=True)

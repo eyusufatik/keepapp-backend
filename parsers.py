@@ -40,3 +40,19 @@ create_record_parser.add_argument(
     "checkList", type=dict, help="'checkList' field must be included in the body.", required=True)
 create_record_parser.add_argument("notes", type=str)
 create_record_parser.add_argument("photos", type=str, action="append")
+
+
+# parser for creating a template
+create_template_parser = reqparse.RequestParser()
+create_template_parser.add_argument(
+    "name", type=str, help="Template must have a name", required=True)
+create_template_parser.add_argument(
+    "checkList", type=str, action="append", help="Template must have a checkList field", required=True)
+
+
+# parser for updating a template
+update_template_parser = reqparse.RequestParser()
+update_template_parser.add_argument(
+    "name", type=str, help="Template must have a name", required=False)
+update_template_parser.add_argument(
+    "checkList", type=str, action="append", help="Template must have a checkList field", required=False)
