@@ -280,8 +280,60 @@ class Templates(Resource):
 
         return success_patcher({"msg": f"Template {id} deleted successfully."}, 1), 200
 
+
+class KeeperGroups(Resource):
+    @jwt_required()
+    @only_admin
+    def get(self, id=None):
+        # /keeperGroups
+        if id is None:
+            keeper_groups = KeeperGroupModel.query.all()
+
+            return_dict = keeper_group_model_list_to_dict(keeper_groups)
+        # /keeperGroups/{id}
+        else:
+            keeper_group = KeeperGroupModel.query.filter_by(id=id).scalar()
+
+            if keeper_group is None:
+                return success_patcher({"msg": "No such keeper group exists"}, 0), 400
+
+            return_dict = keeper_group_model_to_list(keeper_group)
+
+        return success_patcher(return_dict, 1), 200
+
+    @jwt_required()
+    @only_admin
+    def post(self, id=None):
+        if not id is None:
+            return success_patcher({"msg": "No id in POST /keeperGroups."}, 0), 400
+
+        args = create_keeper_group_parser.parse_args()
+        name = args["name"]
+        room_names = args["rooms"]
+
+        rooms = []
+        for room_name in room_names:
+            room = RoomModel.query.filter_by(name=room_name).scalar()
+
+            if room is None:
+                return success_patcher({"msg": f"Room {room_name} doesn't exist."}, 0), 400
+            else:
+                rooms.append(room)
+
+        keeper_group = KeeperGroupModel(name)
+
+        for room in rooms:
+            room.keeper_groups.append(keeper_group)
+        
+        db.session.commit()
+
+        return success_patcher({"id": keeper_group.id}, 1), 200
+            
+
+
 api.add_resource(Rooms, "/rooms",  "/rooms/<int:id>")
 api.add_resource(RoomRecords, "/rooms/<int:id>/records")
 api.add_resource(Templates, "/templates", "/templates/<int:id>")
+api.add_resource(KeeperGroups, "/keeperGroups", "/keeperGroups/<int:id>")
 if __name__ == "__main__":
     app.run(debug=True)

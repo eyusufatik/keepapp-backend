@@ -56,3 +56,11 @@ update_template_parser.add_argument(
     "name", type=str, help="Template must have a name", required=False)
 update_template_parser.add_argument(
     "checkList", type=str, action="append", help="Template must have a checkList field", required=False)
+
+
+# parser for creating keeper group
+create_keeper_group_parser = reqparse.RequestParser()
+create_keeper_group_parser.add_argument(
+    "name", type=str, help="Keeper group must have a name", required=True)
+create_keeper_group_parser.add_argument(
+    "rooms", type=str, action="append", help="Provide rooms the group can access to.", required=True)

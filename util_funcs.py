@@ -3,7 +3,7 @@ from tabnanny import check
 from models.user_model import UserType
 from models.room_model import RoomModel
 from models.template_model import TemplateModel
-
+from models.keeper_group_model import KeeperGroupModel
 
 def success_patcher(dict, number):
     dict["success"] = number
@@ -59,6 +59,35 @@ def template_model_list_to_dict(templates):
         "templates": arr
     }
     return return_dict
+
+
+def keeper_group_model_list_to_dict(keeper_groups):
+    arr = []
+    for keeper_group in keeper_groups:
+        temp_dict = {
+            "id": keeper_group.id,
+            "name": keeper_group.name,
+            "rooms": [x.name for x in keeper_group.rooms],
+            "keeperIds": [x.id for x in keeper_group.keepers]
+        }
+        arr.append(temp_dict)
+    return_dict = {
+        "keeperGroups": arr
+    }
+    return return_dict
+
+
+def keeper_group_model_to_list(keeper_group):
+    return_dict = {
+        "keeperGroup": {
+            "id": keeper_group.id,
+            "name": keeper_group.name,
+            "rooms": [x.name for x in keeper_group.rooms],
+            "keeperIds": [x.id for x in keeper_group.keepers]
+        }
+    }
+    return return_dict
+
 
 def check_room_access(user, room):
     if user.user_type == UserType.super_admin or user.user_type == UserType.admin:
