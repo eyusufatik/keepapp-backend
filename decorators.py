@@ -8,7 +8,7 @@ def only_admin(func):
            returned_value = func(*argv, **kwargs)
            return returned_value
         else:
-            return success_patcher({"msg": "User is not authorized to create a room"}, 0), 400
+            return success_patcher({"msg": "Only admins can call this URL."}, 0), 400
     return check_user
 
 def only_keeper(func):
@@ -17,5 +17,5 @@ def only_keeper(func):
            returned_value = func(*argv, **kwargs)
            return returned_value
         else:
-            return success_patcher({"msg": "User is not authorized to create a room"}, 0), 400
+            return success_patcher({"msg": "Only keepers can call this URL."}, 0), 400
     return check_user

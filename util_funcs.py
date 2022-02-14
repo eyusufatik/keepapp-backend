@@ -1,9 +1,10 @@
 # 1 for successful, 0 for error
 from tabnanny import check
 from models.user_model import UserType
-from models.room_model import RoomModel
+from models.room_model import RoomModel, RoomStatus
 from models.template_model import TemplateModel
 from models.keeper_group_model import KeeperGroupModel
+
 
 def success_patcher(dict, number):
     dict["success"] = number
@@ -77,7 +78,7 @@ def keeper_group_model_list_to_dict(keeper_groups):
     return return_dict
 
 
-def keeper_group_model_to_list(keeper_group):
+def keeper_group_model_to_dict(keeper_group):
     return_dict = {
         "keeperGroup": {
             "id": keeper_group.id,
@@ -86,6 +87,74 @@ def keeper_group_model_to_list(keeper_group):
             "keeperIds": [x.id for x in keeper_group.keepers]
         }
     }
+    return return_dict
+
+
+def message_model_to_dict(message):
+    return_dict = {
+        "message": {
+            "id": message.id,
+            "senderId": message.sender_id,
+            "time": str(message.time),
+            "message": message.message,
+            "is_read": message.is_read
+        }
+    }
+    return return_dict
+
+
+def message_model_list_to_dict(messages):
+    arr = []
+    for message in messages:
+        temp_dict = {
+            "id": message.id,
+            "senderId": message.sender_id,
+            "time": str(message.time),
+            "message": message.message,
+            "is_read": message.is_read
+        }
+        arr.append(temp_dict)
+
+    return_dict = {
+        "messages": arr
+    }
+
+    return return_dict
+
+
+def record_model_to_dict(record):
+    return_dict = {
+        "record": {
+            "id": record.id,
+            "roomId": record.room_id,
+            "time": str(record.time),
+            "keeperId": record.keeper_id,
+            "checkList": record.filled_list,
+            "notes": record.notes,
+            "photos": record.photos
+        }
+    }
+    return return_dict
+
+
+def record_model_list_to_dict(records):
+    arr = []
+    for record in records:
+        temp_dict = {
+            "id": record.id,
+            "roomId": record.room_id,
+            "time": str(record.time),
+            "keeperId": record.keeper_id,
+            "checkList": record.filled_list,
+            "notes": record.notes,
+            "photos": record.photos
+        }
+        arr.append(temp_dict)
+
+    return_dict = {
+        "records": arr
+    }
+
     return return_dict
 
 
@@ -116,3 +185,25 @@ def check_item_values(check_list):
         if value != 2 and value != 3 and value != 4:
             return False
     return True
+
+
+# Checks item status in the check list and returns RoomStatus
+def get_room_status_from_check_list(check_list):
+    has_missing = False
+    has_damaged = False
+
+    for value in check_list.values():
+        if value == 2:
+            has_missing = True
+        elif value == 3:
+            has_damaged = True
+
+    return_val = 4
+    if has_missing and has_damaged:
+        return_val = 23
+    elif has_missing:
+        return_val = 2
+    elif has_damaged:
+        3
+
+    return RoomStatus(return_val)

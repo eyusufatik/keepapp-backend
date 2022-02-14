@@ -1,9 +1,12 @@
 # import from libs
 from datetime import datetime, timedelta
+from email.message import Message
+from pyexpat.errors import messages
 from flask import jsonify, request
 from flask_restful import Resource
 from flask_jwt_extended import create_access_token, current_user, jwt_required, set_access_cookies, unset_jwt_cookies
 import bcrypt
+from sqlalchemy import true
 
 # import from own code
 from app_configs import *
@@ -19,7 +22,7 @@ from util_funcs import *
 from decorators import *
 
 
-@app.route("/user/register", methods=["POST"])
+@app.route("/users/register", methods=["POST"])
 def register():
     args = user_registration_parser.parse_args()
     user_type = UserType(args["userType"])
@@ -39,7 +42,7 @@ def register():
         return success_patcher({}, 1), 201
 
 
-@app.route("/user/login", methods=["POST"])
+@app.route("/users/login", methods=["POST"])
 def login():
     args = user_login_parser.parse_args(req=request)
     username = args["username"]
@@ -58,11 +61,76 @@ def login():
         return jsonify(success_patcher({"msg": "Invalid username or password"}, 0)), 400
 
 
-@app.route("/user/logout", methods=["GET"])
+@app.route("/users/logout", methods=["GET"])
 def logout_with_cookies():
     response = jsonify({"msg": "logout successful"})
     unset_jwt_cookies(response)
     return response
+
+
+class Users(Resource):
+    @jwt_required()
+    @only_admin
+    def get(self, id):
+        user = UserModel.query.filter(UserModel.user_type!=UserType.super_admin).filter_by(id=id).scalar()
+
+        if user is None:
+            return success_patcher({"msg": "User with given ID doesn't exist."}, 0), 400
+        
+        if user.user_type == UserType.admin:
+            return_dict = {
+                "id": user.id,
+                "username": user.username,
+                "userType": user.user_type,
+            }
+        else:
+            return_dict = {
+                "id": user.id,
+                "username": user.username,
+                "userType": user.user_type,
+                "keeperGroups": keeper_group_model_list_to_dict(user.keeper_groups)["keeperGroups"],
+                "records": record_model_list_to_dict(user.records)["records"],
+                "messages": message_model_list_to_dict(user.messages)["messages"]
+            }
+
+        return success_patcher(return_dict, 1), 200
+
+    @jwt_required()
+    @only_admin
+    def put(self, id):
+        args = update_user_parser.parse_args()
+        password = args["password"]
+        keeper_group_ids = args["keeperGroupIds"]
+
+        user = UserModel.query.filter_by(id=id).scalar()
+
+        if user is None:
+            return success_patcher({"msg": "User with given ID doesn't exist."}, 0), 400
+
+        if not password is None and not keeper_group_ids is None:
+            return success_patcher({"msg": "Either update the password or the keeper groups at the same time."}, 0), 400
+
+        if not password is None:
+            hashed_pass = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+            user.password = hashed_pass.decode()
+            db.session.commit()
+            return success_patcher({"msg": "Password successfully updated."}, 1), 200
+        elif not keeper_group_ids is None:
+            if user.user_type == UserType.keeper:
+                user.keeper_groups.clear()
+                db.session.commit()
+                for id in keeper_group_ids:
+                    group = KeeperGroupModel.query.filter_by(id=id).scalar()
+                    
+                    if group is None:
+                        return success_patcher({"msg": f"Group with id {id} doesn't exist."}, 0), 400
+                    else:
+                        group.keepers.append(user)
+                
+                db.session.commit()
+
+            else:
+                return success_patcher({"msg": "Only keepers can be assigned to keeper groups."}, 0), 400
 
 
 class Rooms(Resource):
@@ -194,6 +262,7 @@ class RoomRecords(Resource):
             with db.session.no_autoflush:
                 current_user.records.append(record)
                 room.records.append(record)
+                room.status = get_room_status_from_check_list(check_list)
                 db.session.commit()
             return success_patcher({"msg": "Record created successfully."}, 1), 200
         else:
@@ -297,7 +366,7 @@ class KeeperGroups(Resource):
             if keeper_group is None:
                 return success_patcher({"msg": "No such keeper group exists"}, 0), 400
 
-            return_dict = keeper_group_model_to_list(keeper_group)
+            return_dict = keeper_group_model_to_dict(keeper_group)
 
         return success_patcher(return_dict, 1), 200
 
@@ -324,16 +393,64 @@ class KeeperGroups(Resource):
 
         for room in rooms:
             room.keeper_groups.append(keeper_group)
-        
+
         db.session.commit()
 
         return success_patcher({"id": keeper_group.id}, 1), 200
-            
 
 
+class Messages(Resource):
+    @jwt_required()
+    @only_admin
+    def get(self, start=None, end=None):
+        if start is None or end is None:
+            return success_patcher({"msg": "Provide start and end."}, 0), 400
+
+        messages = MessageModel.query.order_by(MessageModel.time.desc()).offset(start).limit(end-start+1).all()
+        
+        if messages is None:
+            return success_patcher({"msg": "No messages found."}, 0), 400
+
+        return_dict = message_model_list_to_dict(messages)
+
+        return success_patcher(return_dict, 1), 200
+
+    @jwt_required()
+    @only_keeper
+    def post(self, start=None, end=None):
+        if not start is None or not end is None:
+            return success_patcher({"msg": "No start or end in POST /messages"}, 0), 400
+        args = create_message_parser.parse_args()
+        text = args["text"]
+
+        message = MessageModel(datetime.now(), text)
+        current_user.messages.append(message)
+
+        db.session.commit()
+
+        return success_patcher({"msg": "Message created successfully."}, 1), 200
+
+    @jwt_required()
+    @only_admin
+    def put(self, id=None):
+        if id is None:
+            return success_patcher({"msg": "Provide id."}, 0), 400
+        
+        message = MessageModel.query.filter_by(id=id).scalar()
+
+        if message is None:
+            return success_patcher({"msg": "Message with given id doesn't exist."}, 0), 400
+        
+        message.is_read = True
+        db.session.commit()
+
+        return success_patcher({"msg": "Message updated successfully."}, 1), 200 
+
+api.add_resource(Users, "/users/<int:id>")
 api.add_resource(Rooms, "/rooms",  "/rooms/<int:id>")
 api.add_resource(RoomRecords, "/rooms/<int:id>/records")
 api.add_resource(Templates, "/templates", "/templates/<int:id>")
 api.add_resource(KeeperGroups, "/keeperGroups", "/keeperGroups/<int:id>")
+api.add_resource(Messages, "/messages", "/messages/<int:id>", "/messages/<int:start>/<int:end>")
 if __name__ == "__main__":
     app.run(debug=True)

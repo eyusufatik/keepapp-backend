@@ -19,6 +19,12 @@ user_login_parser.add_argument(
     "password", type=str, help="Provide password.", required=True)
 
 
+# parser for updating user data
+update_user_parser = reqparse.RequestParser()
+update_user_parser.add_argument("password", type=str)
+update_user_parser.add_argument("keeperGroupIds", type=int, action="append")
+
+
 # parser for room creation
 create_room_parser = reqparse.RequestParser()
 create_room_parser.add_argument(
@@ -64,3 +70,8 @@ create_keeper_group_parser.add_argument(
     "name", type=str, help="Keeper group must have a name", required=True)
 create_keeper_group_parser.add_argument(
     "rooms", type=str, action="append", help="Provide rooms the group can access to.", required=True)
+
+
+create_message_parser = reqparse.RequestParser()
+create_message_parser.add_argument(
+    "text", type=str, help="Message field must not be empty.", required=True)
