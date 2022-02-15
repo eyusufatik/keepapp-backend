@@ -4,6 +4,9 @@ from .shared import db
 
 
 class TemplateModel(db.Model):
+    """
+    Templates are empty check lists for rooms. A single template can be used for any number of rooms.
+    """
     __tablename__ = "templates"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), default="---")

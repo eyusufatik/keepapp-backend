@@ -2,6 +2,9 @@ from .shared import db
 
 
 class RecordModel(db.Model):
+    """
+    Records are filled out checklists.
+    """
     __tablename__ = "records"
     id = db.Column(db.Integer, primary_key=True)
     room_id = db.Column(db.Integer, db.ForeignKey("rooms.id"), nullable=False)

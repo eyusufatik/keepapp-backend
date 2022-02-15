@@ -1,5 +1,6 @@
 from .shared import db
 
+# table for keeper-keeper group many to many relationship.
 keeper_group_pairings = db.Table("keeper_group_pairings",
                                  db.Column("keeper_id", db.ForeignKey(
                                      "users.id"), primary_key=True),
@@ -9,6 +10,9 @@ keeper_group_pairings = db.Table("keeper_group_pairings",
 
 
 class KeeperGroupModel(db.Model):
+    """
+    Keeper groups are assigned rooms and keepers. Assigned keeper accounts will be able to POST and GET records for the room.
+    """
     __tablename__ = "keeper_groups"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, unique=True, nullable=False)

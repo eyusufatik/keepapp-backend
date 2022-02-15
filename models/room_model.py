@@ -1,7 +1,7 @@
 import enum
 from .shared import db
-from .record_model import RecordModel
 
+# table for group-room many to many relationship.
 group_room_pairings = db.Table("group_room_pairings",
                                db.Column("group_id", db.ForeignKey(
                                    "keeper_groups.id"), primary_key=True),
@@ -17,7 +17,6 @@ class RoomStatus(enum.IntEnum):
     damaged_items = 3
     okay = 4
     missing_and_damaged = 23
-    # not burası main
 
 
 class RoomModel(db.Model):

@@ -21,7 +21,8 @@ user_login_parser.add_argument(
 
 # parser for updating user data
 update_user_parser = reqparse.RequestParser()
-update_user_parser.add_argument("password", type=str)
+update_user_parser.add_argument("oldPassword", type=str)
+update_user_parser.add_argument("newPassword", type=str)
 update_user_parser.add_argument("keeperGroupIds", type=int, action="append")
 
 

@@ -28,6 +28,8 @@ def register():
     user_type = UserType(args["userType"])
     username = args["username"]
     password = args["password"]
+
+    # TODO: Discuss better password enforcement.
     if len(password) < 8:
         return success_patcher({"msg": "Password must be at least 8 characters."}, 0), 400
 
@@ -39,7 +41,7 @@ def register():
                          username, hashed_pass.decode())
         db.session.add(user)
         db.session.commit()
-        return success_patcher({}, 1), 201
+        return success_patcher({"msg": "User registered successfully."}, 1), 201
 
 
 @app.route("/users/login", methods=["POST"])
@@ -47,23 +49,23 @@ def login():
     args = user_login_parser.parse_args(req=request)
     username = args["username"]
     password = args["password"]
+
     user_from_db = UserModel.query.filter_by(username=username).scalar()
-    if user_from_db != None:
-        if bcrypt.checkpw(password.encode(), user_from_db.password.encode()):
-            response = success_patcher({"msg": "Logged in successfully"}, 1)
-            access_token = create_access_token(identity=user_from_db)
-            response = jsonify(response)
-            set_access_cookies(response, access_token)
-            return response, 200
-        else:
-            return jsonify(success_patcher({"msg": "Invalid username or password"}, 0)), 400
+
+    if user_from_db != None and bcrypt.checkpw(password.encode(), user_from_db.password.encode()):
+        response = success_patcher(
+            {"msg": "Logged in successfully"}, 1)
+        access_token = create_access_token(identity=user_from_db)
+        response = jsonify(response)
+        set_access_cookies(response, access_token)
+        return response, 200
     else:
         return jsonify(success_patcher({"msg": "Invalid username or password"}, 0)), 400
 
 
 @app.route("/users/logout", methods=["GET"])
 def logout_with_cookies():
-    response = jsonify({"msg": "logout successful"})
+    response = jsonify({"msg": "logout successful", "success": 1})
     unset_jwt_cookies(response)
     return response
 
@@ -71,49 +73,64 @@ def logout_with_cookies():
 class Users(Resource):
     @jwt_required()
     @only_admin
-    def get(self, id):
-        user = UserModel.query.filter(UserModel.user_type!=UserType.super_admin).filter_by(id=id).scalar()
+    def get(self, id=None):
+        # /users
+        if id is None:
+            users = UserModel.query.filter(
+                UserModel.user_type != UserType.super_admin).all()
 
-        if user is None:
-            return success_patcher({"msg": "User with given ID doesn't exist."}, 0), 400
-        
-        if user.user_type == UserType.admin:
-            return_dict = {
-                "id": user.id,
-                "username": user.username,
-                "userType": user.user_type,
-            }
+            if users is None:
+                return success_patcher({"msg": "No users currently."}, 0), 400
+
+            return_dict = user_model_list_to_dict(users)
+            return success_patcher(return_dict, 1), 200
+        # /users/{id}
         else:
-            return_dict = {
-                "id": user.id,
-                "username": user.username,
-                "userType": user.user_type,
-                "keeperGroups": keeper_group_model_list_to_dict(user.keeper_groups)["keeperGroups"],
-                "records": record_model_list_to_dict(user.records)["records"],
-                "messages": message_model_list_to_dict(user.messages)["messages"]
-            }
+            user = UserModel.query.filter(
+                UserModel.user_type != UserType.super_admin).filter_by(id=id).scalar()
 
-        return success_patcher(return_dict, 1), 200
+            if user is None:
+                return success_patcher({"msg": "User with given ID doesn't exist."}, 0), 400
+
+            return_dict = user_model_to_dict(user)
+
+            return success_patcher(return_dict, 1), 200
 
     @jwt_required()
     @only_admin
-    def put(self, id):
+    def put(self, id=None):
         args = update_user_parser.parse_args()
-        password = args["password"]
+        old_password = args["oldPassword"]
+        new_password = args["newPassword"]
         keeper_group_ids = args["keeperGroupIds"]
 
         user = UserModel.query.filter_by(id=id).scalar()
 
+        if id is None and current_user.user_type == UserType.admin:
+            user = current_user
+
         if user is None:
             return success_patcher({"msg": "User with given ID doesn't exist."}, 0), 400
 
-        if not password is None and not keeper_group_ids is None:
+        if (not old_password is None or not new_password is None) and not keeper_group_ids is None:
             return success_patcher({"msg": "Either update the password or the keeper groups at the same time."}, 0), 400
 
-        if not password is None:
-            hashed_pass = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+        if user.user_type == UserType.keeper and not new_password is None:
+            if len(new_password) < 8:
+                return success_patcher({"msg": "Password must be at least 8 characters."}, 0), 400
+            hashed_pass = bcrypt.hashpw(
+                new_password.encode(), bcrypt.gensalt())
             user.password = hashed_pass.decode()
             db.session.commit()
+            return success_patcher({"msg": "Password successfully updated."}, 1), 200
+        elif user.user_type == UserType.admin and not new_password is None and not old_password is None:
+            if bcrypt.checkpw(old_password.encode(), user.password.encode()):
+                if len(new_password) < 8:
+                    return success_patcher({"msg": "Password must be at least 8 characters."}, 0), 400
+                hashed_pass = bcrypt.hashpw(
+                    new_password.encode(), bcrypt.gensalt())
+                user.password = hashed_pass.decode()
+                db.session.commit()
             return success_patcher({"msg": "Password successfully updated."}, 1), 200
         elif not keeper_group_ids is None:
             if user.user_type == UserType.keeper:
@@ -121,16 +138,35 @@ class Users(Resource):
                 db.session.commit()
                 for id in keeper_group_ids:
                     group = KeeperGroupModel.query.filter_by(id=id).scalar()
-                    
+
                     if group is None:
                         return success_patcher({"msg": f"Group with id {id} doesn't exist."}, 0), 400
                     else:
                         group.keepers.append(user)
-                
-                db.session.commit()
 
+                db.session.commit()
+                return success_patcher({"msg": "Keeper assigned to given groups successfully."}, 1), 200
             else:
                 return success_patcher({"msg": "Only keepers can be assigned to keeper groups."}, 0), 400
+        else:
+            return success_patcher({"msg": "Both the newPassword field and the oldPassword field or the keeperGroupIds field must be filled."}, 0), 400
+
+    @jwt_required()
+    @only_admin
+    def delete(self, id=None):
+        user = UserModel.query.filter(
+            UserModel.user_type != UserType.super_admin).filter_by(id=id).scalar()
+
+        if user is None:
+            return success_patcher({"msg": "User with given ID doesn't exist."}, 0), 400
+
+        if user.user_type != UserType.keeper:
+            return success_patcher({"msg": "Admin accounts cannot be deleted."}, 0), 400
+
+        db.session.delete(user)
+        db.session.commit()
+
+        return success_patcher({"msg": "Account deleted succesffully."}, 1), 200
 
 
 class Rooms(Resource):
@@ -227,10 +263,12 @@ class RoomRecords(Resource):
 
             if record is None:
                 return success_patcher({"msg": "No record for the room today/at the given date."}, 0), 400
-            return_dict = {}
-            return_dict["checkList"] = record.filled_list
-            return_dict["notes"] = record.notes
-            return_dict["photos"] = record.photos
+
+            return_dict = {
+                "checkList": record.filled_list,
+                "notes": record.notes,
+                "photos":  record.photos
+            }
             return_dict = {"record": return_dict}
 
             return success_patcher(return_dict, 1), 200
@@ -276,7 +314,8 @@ class Templates(Resource):
         return_dict = {}
         # /templates
         if id is None:
-            all_templates = TemplateModel.query.all()
+            all_templates = TemplateModel.query.filter_by(
+                single_use=False).all()
             return_dict = template_model_list_to_dict(all_templates)
         # /templates/{id}
         else:
@@ -406,8 +445,9 @@ class Messages(Resource):
         if start is None or end is None:
             return success_patcher({"msg": "Provide start and end."}, 0), 400
 
-        messages = MessageModel.query.order_by(MessageModel.time.desc()).offset(start).limit(end-start+1).all()
-        
+        messages = MessageModel.query.order_by(
+            MessageModel.time.desc()).offset(start).limit(end-start+1).all()
+
         if messages is None:
             return success_patcher({"msg": "No messages found."}, 0), 400
 
@@ -435,22 +475,25 @@ class Messages(Resource):
     def put(self, id=None):
         if id is None:
             return success_patcher({"msg": "Provide id."}, 0), 400
-        
+
         message = MessageModel.query.filter_by(id=id).scalar()
 
         if message is None:
             return success_patcher({"msg": "Message with given id doesn't exist."}, 0), 400
-        
+
         message.is_read = True
         db.session.commit()
 
-        return success_patcher({"msg": "Message updated successfully."}, 1), 200 
+        return success_patcher({"msg": "Message updated successfully."}, 1), 200
 
-api.add_resource(Users, "/users/<int:id>")
+
+api.add_resource(Users, "/users", "/users/<int:id>")
 api.add_resource(Rooms, "/rooms",  "/rooms/<int:id>")
 api.add_resource(RoomRecords, "/rooms/<int:id>/records")
 api.add_resource(Templates, "/templates", "/templates/<int:id>")
 api.add_resource(KeeperGroups, "/keeperGroups", "/keeperGroups/<int:id>")
-api.add_resource(Messages, "/messages", "/messages/<int:id>", "/messages/<int:start>/<int:end>")
+api.add_resource(Messages, "/messages", "/messages/<int:id>",
+                 "/messages/<int:start>/<int:end>")
+
 if __name__ == "__main__":
     app.run(debug=True)

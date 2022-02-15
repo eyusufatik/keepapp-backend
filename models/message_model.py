@@ -2,6 +2,9 @@ from .shared import db
 
 
 class MessageModel(db.Model):
+    """
+    One way messages from keepers to admins.
+    """
     __tablename__ = "messages"
     id = db.Column(db.Integer, primary_key=True)
     sender_id = db.Column(db.Integer, db.ForeignKey("users.id"))
