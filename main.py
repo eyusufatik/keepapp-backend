@@ -21,6 +21,7 @@ from parsers import *
 from util_funcs import *
 from decorators import *
 
+# resourceleri ayrı dosyalara ayırıp bir de linter kullanalım mı? Linter pek bilmiyorum pythonda ama mutlaka vardır. Okuması ve ilerlemesi de kolay olur. GJ
 
 @app.route("/users/register", methods=["POST"])
 def register():
@@ -28,6 +29,9 @@ def register():
     user_type = UserType(args["userType"])
     username = args["username"]
     password = args["password"]
+    #from operator import attrgetter
+    #user_type, username, password = attrgetter('userType', 'username', 'password')(args)
+    # js const {username, password} = user; alternatifi olarak bu kullanılabilir, daha az line tutar. Rahatlığına bağlı.
 
     # TODO: Discuss better password enforcement.
     if len(password) < 8:
@@ -80,7 +84,7 @@ class Users(Resource):
                 UserModel.user_type != UserType.super_admin).all()
 
             if users is None:
-                return success_patcher({"msg": "No users currently."}, 0), 400
+                return success_patcher({"msg": "No users currently."}, 0), 400 # 404
 
             return_dict = user_model_list_to_dict(users)
             return success_patcher(return_dict, 1), 200
@@ -90,7 +94,7 @@ class Users(Resource):
                 UserModel.user_type != UserType.super_admin).filter_by(id=id).scalar()
 
             if user is None:
-                return success_patcher({"msg": "User with given ID doesn't exist."}, 0), 400
+                return success_patcher({"msg": "User with given ID doesn't exist."}, 0), 400 # 404
 
             return_dict = user_model_to_dict(user)
 
@@ -110,10 +114,10 @@ class Users(Resource):
             user = current_user
 
         if user is None:
-            return success_patcher({"msg": "User with given ID doesn't exist."}, 0), 400
+            return success_patcher({"msg": "User with given ID doesn't exist."}, 0), 400 # 404
 
         if (not old_password is None or not new_password is None) and not keeper_group_ids is None:
-            return success_patcher({"msg": "Either update the password or the keeper groups at the same time."}, 0), 400
+            return success_patcher({"msg": "Either update the password or the keeper groups at the same time."}, 0), 400 # belki 401. Zaten muhtemelen buna düşen durum çıkmayacak.
 
         if user.user_type == UserType.keeper and not new_password is None:
             if len(new_password) < 8:
@@ -122,7 +126,7 @@ class Users(Resource):
                 new_password.encode(), bcrypt.gensalt())
             user.password = hashed_pass.decode()
             db.session.commit()
-            return success_patcher({"msg": "Password successfully updated."}, 1), 200
+            return success_patcher({"msg": "Password successfully updated."}, 1), 200 
         elif user.user_type == UserType.admin and not new_password is None and not old_password is None:
             if bcrypt.checkpw(old_password.encode(), user.password.encode()):
                 if len(new_password) < 8:
@@ -131,7 +135,7 @@ class Users(Resource):
                     new_password.encode(), bcrypt.gensalt())
                 user.password = hashed_pass.decode()
                 db.session.commit()
-            return success_patcher({"msg": "Password successfully updated."}, 1), 200
+            return success_patcher({"msg": "Password successfully updated."}, 1), 200 
         elif not keeper_group_ids is None:
             if user.user_type == UserType.keeper:
                 user.keeper_groups.clear()
@@ -158,10 +162,10 @@ class Users(Resource):
             UserModel.user_type != UserType.super_admin).filter_by(id=id).scalar()
 
         if user is None:
-            return success_patcher({"msg": "User with given ID doesn't exist."}, 0), 400
+            return success_patcher({"msg": "User with given ID doesn't exist."}, 0), 400 # 404
 
         if user.user_type != UserType.keeper:
-            return success_patcher({"msg": "Admin accounts cannot be deleted."}, 0), 400
+            return success_patcher({"msg": "Admin accounts cannot be deleted."}, 0), 400 # 404
 
         db.session.delete(user)
         db.session.commit()
@@ -171,7 +175,7 @@ class Users(Resource):
 
 class Rooms(Resource):
     @jwt_required()
-    def get(self, id=None):
+    def get(self, id=None): # çok anlayamadım ama buralarda odaların tüm fieldları dönmüyor değil mi? Admin dash ve normal dashboradda bize lazım olanlar id ve oda numarası.(? tam düşünmedim) Fazladan field bizi yorar. Eğer zaten oksa np.
         # /rooms
         if id is None:
             user_rooms = {}
@@ -183,17 +187,17 @@ class Rooms(Resource):
                 for group in current_user.keeper_groups:
                     for room in group.rooms:
                         room_set.add(room)
-                user_rooms = room_model_list_to_dict(room_set)
+                user_rooms = room_model_list_to_dict(room_set) 
             return success_patcher(user_rooms, 1), 200
         # /rooms/<id>
         else:
             room = RoomModel.query.filter_by(id=id).scalar()
 
             if room is None:
-                return success_patcher({"msg": "Room with given ID doesn't exist."}, 0), 400
+                return success_patcher({"msg": "Room with given ID doesn't exist."}, 0), 400 # 404 :D bundan sonra koymuyom bir daha gözden geçirirsin Çok dert değil de alışkanlık olsun iyi olur.
 
             if current_user.user_type == UserType.keeper and not check_room_access(current_user, room):
-                return success_patcher({"msg": "Keeper doesn't have access to the room, add it to a group that has access to the room"}, 0), 400
+                return success_patcher({"msg": "Keeper doesn't have access to the room, add it to a group that has access to the room"}, 0), 400 # You do not have access to this room. İstek atan keeper
 
             room_dict = room_model_to_dict(room)
             return success_patcher(room_dict, 1), 200
@@ -239,7 +243,7 @@ class Rooms(Resource):
             new_room_ids[name] = new_room.id
         return success_patcher({"newRooms": new_room_ids}, 1), 200
 
-
+# Burada tek arg date değil, fe'de detaylar var. Room status, room number, ve dolduran hizmetli idsi var. Oda numarası araması partial olabilir. SQL LIKE gibi bir func kullanmak gerek.
 class RoomRecords(Resource):
     @jwt_required()
     def get(self, id):
